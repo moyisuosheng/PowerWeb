@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#080d17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<title>电脑电源控制</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none !important}
+  html,body{margin:0;padding:0;background:#080d17}
+  body{
+    color:#e9eff9;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    min-height:100vh;
+    background-color:#080d17;
+    background-image:
+      radial-gradient(900px 520px at 50% -10%, #16233c 0%, rgba(8,13,23,0) 66%),
+      radial-gradient(760px 460px at 112% 108%, #0d2b26 0%, rgba(8,13,23,0) 72%);
+    background-repeat:no-repeat;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:480px;margin:0 auto;padding:14px 16px calc(26px + env(safe-area-inset-bottom))}
+
+  /* ---------- 顶部 ---------- */
+  .head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 2px 16px}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .logo{
+    width:42px;height:42px;border-radius:13px;flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:19px;color:#6ff0c4;
+    background:linear-gradient(150deg,#0f1f2a,#0b1716);
+    border:1px solid #1c3a36;
+    box-shadow:0 0 18px -6px #10b98155, inset 0 0 14px -6px #10b981;
+    font-family:"Segoe UI Symbol",sans-serif;
+  }
+  .name{font-size:17px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
+  .meta{display:flex;align-items:center;gap:6px;font-size:12px;color:#7d90ac;margin-top:3px;white-space:nowrap;overflow:hidden}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none;background:#ef4444}
+  .dot.on{background:#10b981;box-shadow:0 0 9px #10b981}
+  .clock{text-align:right;flex:none}
+  .clock .t{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.5px;color:#cfdcf0}
+  .clock .d{font-size:11px;color:#7d90ac;margin-top:2px;font-variant-numeric:tabular-nums}
+
+  /* ---------- 卡片 ---------- */
+  .card{
+    background:linear-gradient(180deg,#121c2e 0%,#0e1626 100%);
+    border:1px solid #1e2b40;border-radius:18px;
+    padding:16px;margin-bottom:13px;
+    box-shadow:0 14px 34px -26px #000;
+  }
+  .card h2{
+    font-size:14px;margin:0 0 5px;font-weight:600;color:#cfdcf0;
+    display:flex;align-items:center;gap:8px;letter-spacing:.3px;
+  }
+  .card h2::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(#10b981,#3b82f6)}
+  .hint{font-size:12px;color:#75869f;margin:0 0 13px;line-height:1.55}
+
+  /* ---------- 预约倒计时 ---------- */
+  .pending{background:linear-gradient(180deg,#2a2010 0%,#151009 100%);border-color:#463509}
+  .prow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tag{font-size:12px;padding:4px 10px;border-radius:999px;background:#3d2d08;color:#fbbf24;font-weight:600;white-space:nowrap}
+  .at{font-size:13px;color:#dfb468;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .count{
+    font-size:36px;font-weight:800;text-align:center;letter-spacing:2px;
+    font-variant-numeric:tabular-nums;color:#ffcf72;
+    margin:10px 0 12px;text-shadow:0 0 26px #f59e0b40;
+  }
+  .bar{height:4px;border-radius:4px;background:#38290c;overflow:hidden;margin-bottom:14px}
+  .bar i{display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,#f59e0b,#fbbf24);transition:width .5s linear}
+  .pending .btn{width:100%;height:44px}
+
+  /* ---------- 立即操作 ---------- */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .big{
+    height:74px;border-radius:16px;border:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
+    font:600 15px/1 inherit;color:#fff;font-family:inherit;cursor:pointer;
+    transition:transform .12s ease,filter .12s ease;
+  }
+  .big:active{transform:scale(.96);filter:brightness(1.12)}
+  .big .ico{font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center}
+  .big .ico svg{width:20px;height:20px}
+  .logo svg{width:20px;height:20px}
+  .big.r{background:linear-gradient(180deg,#f0524f,#b91c1c);box-shadow:0 10px 24px -16px #ef4444}
+  .big.b{background:linear-gradient(180deg,#4a8bf7,#1d4ed8);box-shadow:0 10px 24px -16px #3b82f6}
+  .big.g{background:linear-gradient(180deg,#26344c,#1a2438);color:#b9c8e0}
+
+  /* ---------- 预约表单 ---------- */
+  .seg{display:flex;gap:5px;background:#0c1524;border:1px solid #1c283c;border-radius:13px;padding:4px;margin-bottom:13px}
+  .seg button{
+    flex:1;height:38px;border:0;border-radius:10px;background:transparent;color:#8797b0;
+    font:600 14px/1 inherit;font-family:inherit;cursor:pointer;transition:background .18s,color .18s;
+  }
+  .seg button.on{background:linear-gradient(180deg,#22304a,#1b2740);color:#fff;box-shadow:0 0 0 1px #2f4160 inset}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:13px}
+  .chips button{
+    padding:10px 15px;border-radius:999px;border:1px solid #24324a;background:#121c2e;color:#b8c7de;
+    font:500 13px/1 inherit;font-family:inherit;cursor:pointer;transition:transform .1s,background .18s,border-color .18s;
+  }
+  .chips button:active{transform:scale(.95);background:#1b2a42;border-color:#33466b}
+
+  .atrow{display:flex;gap:8px;align-items:center}
+  input[type=datetime-local]{
+    flex:1;min-width:0;height:46px;border-radius:12px;border:1px solid #24324a;background:#0c1524;
+    color:#cfe0f7;padding:0 12px;font:500 14px/1 inherit;font-family:inherit;color-scheme:dark;
+  }
+  .btn{
+    height:46px;padding:0 18px;border-radius:12px;border:0;
+    font:600 14px/1 inherit;font-family:inherit;color:#fff;cursor:pointer;white-space:nowrap;
+    transition:transform .1s ease,filter .1s ease;
+  }
+  .btn:active{transform:scale(.97);filter:brightness(1.1)}
+  .btn.primary{background:linear-gradient(180deg,#12c98f,#047857);box-shadow:0 10px 24px -16px #10b981}
+  .btn.danger{background:linear-gradient(180deg,#ef4444,#b91c1c)}
+  .btn.ghost{background:transparent;border:1px solid #33425e;color:#a9b8cf}
+  .btn:disabled{opacity:.5}
+
+  .foot{text-align:center;font-size:11px;color:#56637d;padding:8px 0 0;line-height:1.7}
+
+  /* ---------- 弹层 ---------- */
+  .mask{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:#04070cd9;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+  @media (min-width:540px){.mask{align-items:center}}
+  .sheet{
+    width:100%;max-width:480px;
+    background:linear-gradient(180deg,#16223a,#101827);
+    border:1px solid #23304a;border-radius:22px 22px 0 0;
+    padding:22px 18px calc(18px + env(safe-area-inset-bottom));
+    animation:up .24s cubic-bezier(.2,.8,.3,1);
+  }
+  @media (min-width:540px){.sheet{border-radius:22px;margin:16px;box-shadow:0 30px 60px -30px #000}}
+  @keyframes up{from{transform:translateY(28px);opacity:.55}to{transform:translateY(0);opacity:1}}
+  .sheet .h{font-size:17px;font-weight:700;margin-bottom:9px}
+  .sheet .p{font-size:13px;color:#98a8c0;line-height:1.65;margin-bottom:20px}
+  .sheet .btns{display:flex;gap:10px}
+  .sheet .btns .btn{flex:1;height:50px;font-size:15px}
+  .key{width:100%;height:50px;border-radius:13px;border:1px solid #2a3a56;background:#0b1422;color:#dbe7f7;padding:0 14px;font-size:16px;margin-bottom:16px;font-family:inherit}
+  .key:focus{outline:none;border-color:#3b82f6}
+
+  /* ---------- 提示 ---------- */
+  .toast{
+    position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top));z-index:70;
+    transform:translate(-50%,-14px);opacity:0;pointer-events:none;
+    max-width:88%;padding:11px 17px;border-radius:999px;
+    font-size:13px;text-align:center;line-height:1.45;
+    background:#16233a;border:1px solid #2a3a56;color:#e9eff9;
+    transition:opacity .2s ease,transform .2s ease;
+    box-shadow:0 12px 30px -18px #000;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .toast.ok{background:#0f2d24;border-color:#1f6f52;color:#8bf0c7}
+  .toast.err{background:#2a1214;border-color:#7f2b2b;color:#ffb4b4}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3.2v8.4"/><path d="M7 6.6a7.6 7.6 0 1 0 10 0"/></svg>
+      </div>
+      <div style="min-width:0">
+        <div class="name">电脑电源控制</div>
+        <div class="meta"><span id="host">连接中</span><i id="dot" class="dot"></i><span id="conn">连接中</span></div>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="t" id="clock">--:--:--</div>
+      <div class="d" id="date">---</div>
+    </div>
+  </header>
+
+  <section class="card pending" id="pending" hidden>
+    <div class="prow">
+      <span class="tag" id="pTag">预约关机</span>
+      <span class="at" id="pAt">--</span>
+    </div>
+    <div class="count" id="pCount">00:00:00</div>
+    <div class="bar"><i id="pBar"></i></div>
+    <button class="btn ghost" id="cancelBtn">取消预约</button>
+  </section>
+
+  <section class="card">
+    <h2>立即操作</h2>
+    <p class="hint">点击后需要二次确认，确认即执行，没有缓冲时间</p>
+    <div class="grid">
+      <button class="big r" data-act="shutdown"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3.2v8.4"/><path d="M7 6.6a7.6 7.6 0 1 0 10 0"/></svg></span>关机</button>
+      <button class="big b" data-act="restart"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20.4 12a8.4 8.4 0 1 1-3.1-6.4"/><path d="M20.8 3.4v4.6h-4.6"/></svg></span>重启</button>
+      <button class="big g" data-act="sleep"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20.6 14.4A8.7 8.7 0 1 1 9.6 3.4a6.9 6.9 0 0 0 11 11z"/></svg></span>睡眠</button>
+      <button class="big g" data-act="lock"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="4.6" y="10.2" width="14.8" height="10" rx="2.4"/><path d="M8.2 10.2V7.6a3.8 3.8 0 0 1 7.6 0v2.6"/></svg></span>锁屏</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>预约</h2>
+    <div class="seg" id="seg">
+      <button class="on" data-type="shutdown">关机</button>
+      <button data-type="restart">重启</button>
+    </div>
+
+    <div class="chips" id="chips">
+      <button data-min="5">5 分钟</button>
+      <button data-min="15">15 分钟</button>
+      <button data-min="30">30 分钟</button>
+      <button data-min="60">1 小时</button>
+      <button data-min="120">2 小时</button>
+      <button data-min="240">4 小时</button>
+    </div>
+
+    <div class="atrow">
+      <input type="datetime-local" id="dtInput">
+      <button class="btn primary" id="atBtn">预约</button>
+    </div>
+    <p class="hint" style="margin:13px 0 0">预约由 Windows 自身计时，关掉本页面也依然生效；到点前可随时取消。</p>
+  </section>
+
+  <div class="foot" id="foot">PowerWeb</div>
+</div>
+
+<!-- 确认弹层 -->
+<div class="mask" id="mask" hidden>
+  <div class="sheet">
+    <div class="h" id="mTitle">确认操作</div>
+    <div class="p" id="mDesc"></div>
+    <div class="btns">
+      <button class="btn ghost" id="mCancel">再想想</button>
+      <button class="btn danger" id="mOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 密钥弹层 -->
+<div class="mask" id="gate" hidden>
+  <div class="sheet">
+    <div class="h">需要访问密钥</div>
+    <div class="p">这台电脑开启了访问保护，请输入启动服务时设置的密钥。</div>
+    <input class="key" id="keyInput" type="password" inputmode="numeric" placeholder="访问密钥" autocomplete="off">
+    <div class="btns"><button class="btn primary" id="keyOk">进入</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY_STORE = 'powerweb.key';
+  var LABEL = { shutdown: '关机', restart: '重启' };
+
+  var offset = 0;            // 服务器时间 - 本地时间（毫秒）
+  var sched = null;
+  var actionType = 'shutdown';
+  var modalOk = null;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function nowMs() { return Date.now() + offset; }
+
+  function hms(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+    return pad(h) + ':' + pad(m) + ':' + pad(s);
+  }
+
+  function fmt(ts) {
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  var toastTimer = null;
+  function toast(msg, type) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, 2800);
+  }
+
+  function headers() {
+    var h = { 'Content-Type': 'application/json' };
+    var k = localStorage.getItem(KEY_STORE);
+    if (k) { h['X-Auth-Key'] = k; }
+    return h;
+  }
+
+  function api(path, body) {
+    var opt = { method: body ? 'POST' : 'GET', headers: headers(), cache: 'no-store' };
+    if (body) { opt.body = JSON.stringify(body); }
+    return fetch(path, opt).then(function (r) {
+      if (r.status === 401) { $('gate').hidden = false; throw new Error('AUTH'); }
+      return r.json().then(function (d) {
+        if (!r.ok || d.ok === false) { throw new Error(d.error || ('HTTP ' + r.status)); }
+        return d;
+      });
+    });
+  }
+
+  /* ---------------- 状态与渲染 ---------------- */
+  function refresh() {
+    return api('/api/status').then(function (d) {
+      offset = d.nowTs * 1000 - Date.now();
+      sched = d.scheduled;
+      $('host').textContent = d.hostname || '电脑';
+      $('conn').textContent = d.dryRun ? '已连接 · 演练' : '已连接';
+      $('dot').className = 'dot on';
+      $('foot').textContent = 'PowerWeb · ' + location.host + (d.dryRun ? ' · 演练模式' : '');
+      $('gate').hidden = true;
+      render();
+    }).catch(function (e) {
+      if (e.message === 'AUTH') { return; }
+      $('conn').textContent = '连接中断';
+      $('dot').className = 'dot';
+    });
+  }
+
+  function render() {
+    if (!sched) { $('pending').hidden = true; tick(); return; }
+    $('pending').hidden = false;
+    $('pTag').textContent = sched.action === 'restart' ? '预约重启' : '预约关机';
+    $('pAt').textContent = (sched.date ? sched.date + ' ' : '') + sched.at;
+    tick();
+  }
+
+  function tick() {
+    var d = new Date(nowMs());
+    $('clock').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    $('date').textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      ' 周' + '日一二三四五六'.charAt(d.getDay());
+
+    if (!sched) { return; }
+    var rem = (sched.atTs * 1000 - nowMs()) / 1000;
+    if (rem <= 0) {
+      $('pCount').textContent = '00:00:00';
+      $('pBar').style.width = '100%';
+      return;
+    }
+    $('pCount').textContent = hms(rem);
+    var total = sched.span > 0 ? sched.span : rem;
+    var pct = (1 - rem / total) * 100;
+    $('pBar').style.width = Math.min(100, Math.max(0, pct)).toFixed(1) + '%';
+  }
+
+  /* ---------------- 确认弹层 ---------------- */
+  function confirmBox(title, desc, okText, danger, cb) {
+    $('mTitle').textContent = title;
+    $('mDesc').textContent = desc;
+    $('mOk').textContent = okText;
+    $('mOk').className = 'btn ' + (danger ? 'danger' : 'primary');
+    modalOk = cb;
+    $('mask').hidden = false;
+  }
+
+  $('mCancel').onclick = function () { $('mask').hidden = true; modalOk = null; };
+  $('mask').onclick = function (ev) {
+    if (ev.target === $('mask')) { $('mask').hidden = true; modalOk = null; }
+  };
+  $('mOk').onclick = function () {
+    var cb = modalOk;
+    $('mask').hidden = true;
+    modalOk = null;
+    if (!cb) { return; }
+    Promise.resolve().then(cb).catch(function (e) {
+      if (e.message === 'AUTH') { return; }
+      toast(e.message || '操作失败', 'err');
+    });
+  };
+
+  /* ---------------- 立即操作 ---------------- */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-act]'), function (btn) {
+    btn.onclick = function () {
+      var act = btn.getAttribute('data-act');
+
+      if (act === 'shutdown' || act === 'restart') {
+        var label = LABEL[act];
+        confirmBox('立即' + label, '电脑会马上' + label + '，没保存的内容会丢失。确定现在' + label + '吗？',
+          '确定' + label, true, function () {
+            return api('/api/schedule', { action: act, seconds: 0 }).then(function (d) {
+              toast(d.message || ('已发送立即' + label + '指令'), 'ok');
+              setTimeout(refresh, 1200);
+            });
+          });
+        return;
+      }
+
+      if (act === 'sleep') {
+        confirmBox('进入睡眠', '电脑会进入睡眠，网络会断开，需要按电源键或键盘唤醒。',
+          '确定睡眠', false, function () {
+            return api('/api/power', { action: 'sleep' }).then(function (d) {
+              toast(d.message || '已发送睡眠指令', 'ok');
+            });
+          });
+        return;
+      }
+
+      if (act === 'lock') {
+        api('/api/power', { action: 'lock' }).then(function (d) {
+          toast(d.message || '已锁定屏幕', 'ok');
+        }).catch(function (e) {
+          if (e.message !== 'AUTH') { toast(e.message, 'err'); }
+        });
+      }
+    };
+  });
+
+  /* ---------------- 预约：快捷时长 ---------------- */
+  $('chips').onclick = function (ev) {
+    var b = ev.target.closest ? ev.target.closest('button[data-min]') : null;
+    if (!b) { return; }
+    var min = parseInt(b.getAttribute('data-min'), 10);
+    var label = LABEL[actionType];
+    var at = nowMs() + min * 60000;
+    var text = min >= 60 ? (min / 60) + ' 小时' : min + ' 分钟';
+
+    confirmBox('预约' + label, text + '后（约 ' + fmt(at) + '）自动' + label + '，到点前可随时取消。',
+      '确认预约', false, function () {
+        return api('/api/schedule', { action: actionType, seconds: min * 60 }).then(function (d) {
+          toast(d.message || ('已预约' + label), 'ok');
+          return refresh();
+        });
+      });
+  };
+
+  /* ---------------- 预约：指定时间 ---------------- */
+  $('atBtn').onclick = function () {
+    var v = $('dtInput').value;
+    if (!v) { toast('请先选择日期和时间', 'err'); return; }
+    var d = new Date(v);
+    if (isNaN(d.getTime())) { toast('时间格式不正确', 'err'); return; }
+    if (d.getTime() <= nowMs() + 30000) { toast('预约时间需要晚于现在', 'err'); return; }
+
+    var label = LABEL[actionType];
+    confirmBox('预约' + label, '将在 ' + fmt(d.getTime()) + ' 自动' + label + '。', '确认预约', false, function () {
+      return api('/api/schedule', { action: actionType, at: v }).then(function (r) {
+        toast(r.message || ('已预约' + label), 'ok');
+        return refresh();
+      });
+    });
+  };
+
+  /* ---------------- 取消预约 ---------------- */
+  $('cancelBtn').onclick = function () {
+    api('/api/cancel', {}).then(function (d) {
+      toast(d.message || '已取消预约', 'ok');
+      return refresh();
+    }).catch(function (e) {
+      if (e.message !== 'AUTH') { toast(e.message, 'err'); }
+    });
+  };
+
+  /* ---------------- 关机 / 重启 切换 ---------------- */
+  Array.prototype.forEach.call($('seg').querySelectorAll('button'), function (b) {
+    b.onclick = function () {
+      actionType = b.getAttribute('data-type');
+      Array.prototype.forEach.call($('seg').querySelectorAll('button'), function (x) {
+        x.classList.toggle('on', x === b);
+      });
+    };
+  });
+
+  /* ---------------- 密钥 ---------------- */
+  $('keyOk').onclick = function () {
+    var k = $('keyInput').value.trim();
+    if (!k) { toast('请输入访问密钥', 'err'); return; }
+    localStorage.setItem(KEY_STORE, k);
+    $('gate').hidden = true;
+    run();
+  };
+  $('keyInput').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { $('keyOk').click(); }
+  });
+
+  /* ---------------- 初始化 ---------------- */
+  function initDateTime() {
+    var t = new Date(nowMs() + 30 * 60000);
+    t.setSeconds(0, 0);
+    $('dtInput').value = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()) +
+      'T' + pad(t.getHours()) + ':' + pad(t.getMinutes());
+  }
+
+  function run() {
+    refresh().then(function () {
+      if (!$('gate').hidden) { return; }
+      initDateTime();
+    });
+  }
+
+  setInterval(tick, 500);
+  setInterval(refresh, 5000);
+
+  // 页面回到前台时立刻刷新一次
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') { refresh(); }
+  });
+
+  run();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# 统一换行，避免 Windows / Linux 之间来回转换
+* text=auto eol=lf
+
+# 批处理和 PowerShell 在 Windows 上跑，保持 CRLF 更稳妥
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制资源
+*.ico binary
+*.png binary
+*.exe binary

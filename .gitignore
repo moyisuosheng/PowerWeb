@@ -1,0 +1,22 @@
+# 构建产物
+build/
+*.exe
+*.o
+*.res
+*.zip
+
+# 运行时生成
+state.json
+
+# 本地工具链 / 助手缓存
+.tools/
+.workbuddy/
+
+# 图标渲染的中间 PNG（成品是 res/app.ico）
+icon/png/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

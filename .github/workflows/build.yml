@@ -1,0 +1,153 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CC_MINGW: x86_64-w64-mingw32-gcc
+  WINDRES_MINGW: x86_64-w64-mingw32-windres
+
+jobs:
+  build:
+    name: 编译（mingw-w64 x64）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 mingw-w64 工具链
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+
+      - name: 计算版本号
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+            IFS=. read -r a b c d <<< "$V" || true
+            a=$(printf '%s' "${a:-0}" | tr -cd '0-9'); b=$(printf '%s' "${b:-0}" | tr -cd '0-9')
+            c=$(printf '%s' "${c:-0}" | tr -cd '0-9'); d=$(printf '%s' "${d:-0}" | tr -cd '0-9')
+            N="${a:-0},${b:-0},${c:-0},${d:-0}"
+          else
+            V="0.0.0-dev+${GITHUB_SHA:0:7}"
+            N="0,0,0,${GITHUB_RUN_NUMBER}"
+          fi
+          echo "value=${V}" >> "$GITHUB_OUTPUT"
+          echo "num=${N}"   >> "$GITHUB_OUTPUT"
+          echo "构建版本：${V}（${N}）"
+
+      - name: 编译
+        run: |
+          make VERSION="${{ steps.version.outputs.value }}" \
+               VER_NUM="${{ steps.version.outputs.num }}" \
+               CC="${CC_MINGW}" WINDRES="${WINDRES_MINGW}" PYTHON=python3
+          echo "--- 产物 ---"
+          ls -l build/dist
+          file build/dist/PowerWeb.exe
+          echo "--- 段表（应包含 .rsrc，说明图标/版本信息已写入）---"
+          x86_64-w64-mingw32-objdump -h build/dist/PowerWeb.exe | grep -E "Idx|\.text|\.rsrc"
+          echo "--- 导入表（应只有系统 DLL）---"
+          x86_64-w64-mingw32-objdump -p build/dist/PowerWeb.exe | grep "DLL Name"
+
+      - name: 上传可运行目录
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerWeb-win64
+          path: build/dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  smoke:
+    name: 冒烟测试（Windows Server 实机）
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: PowerWeb-win64
+          path: dist
+
+      - name: 运行冒烟测试
+        shell: pwsh
+        run: ./scripts/smoke.ps1 -Dir dist
+
+  release:
+    name: 发布 Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: PowerWeb-win64
+          path: dist
+
+      - name: 打包 zip 与 SHA256
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          cd dist
+          zip -9 -r "../PowerWeb-${VERSION}-win64.zip" .
+          cd ..
+          sha256sum "PowerWeb-${VERSION}-win64.zip" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -l
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PowerWeb ${{ needs.build.outputs.version }}
+          body: |
+            ## PowerWeb ${{ needs.build.outputs.version }}
+
+            手机连同一个 Wi-Fi，浏览器打开 `http://<电脑IP>:8000`，就能关机 / 重启 / 睡眠 / 锁屏 / 预约关机。
+
+            ### 用法
+
+            1. 下载 `PowerWeb-${{ needs.build.outputs.version }}-win64.zip` 并解压（**exe 和 index.html 必须放在一起**）
+            2. 双击 `start-exe.bat`，窗口里会打印手机要访问的地址
+            3. 手机连同一个局域网，浏览器打开那个地址
+            4. 打不开就先双击 `open-firewall.bat` 放行 8000 端口（会弹 UAC）
+
+            ```
+            PowerWeb.exe --port 8123 --key 1234     换端口 + 开访问密钥
+            PowerWeb.exe --dry-run                  演练模式，不会真的关机
+            ```
+
+            ### 文件说明
+
+            | 文件 | 作用 |
+            | --- | --- |
+            | `PowerWeb.exe` | 主程序，单文件、无运行时依赖 |
+            | `index.html` | 手机端页面，和 exe 放同一目录 |
+            | `start-exe.bat` | 双击启动 |
+            | `open-firewall.bat` | 放行端口（需要管理员） |
+            | `enable-autostart.bat` / `disable-autostart.bat` | 开机自启 / 取消自启 |
+            | `install-autostart.ps1` | 上面两个 bat 实际调用的脚本 |
+
+            仅支持 Windows 10 / 11 x64。内网工具，请不要把端口映射到公网。
+          files: |
+            PowerWeb-${{ needs.build.outputs.version }}-win64.zip
+            dist/PowerWeb.exe
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true

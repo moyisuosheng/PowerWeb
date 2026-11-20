@@ -1,0 +1,55 @@
+/*
+ * app.rc —— PowerWeb.exe 的 Windows 资源
+ *
+ *   1        ICON         应用图标（资源管理器 / 任务栏 / 文件属性）
+ *   1        VERSIONINFO  版本信息（属性 → 详细信息）
+ *
+ * 版本号由 Makefile 生成的 build/version.h 提供：
+ *   PW_VERSION   字符串，如 "1.0.0"
+ *   PW_VER_NUM   四段数字，如 1,0,0,0
+ */
+
+/* 源码是 UTF-8（含中文），告诉 rc.exe / windres 按 UTF-8 解析 */
+#pragma code_page(65001)
+
+#include <windows.h>
+#include "version.h"   /* 由 Makefile 生成到 build/version.h，需 -I build */
+
+1 ICON "app.ico"
+
+1 VERSIONINFO
+FILEVERSION     PW_VER_NUM
+PRODUCTVERSION  PW_VER_NUM
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        /* 0x0804 = 简体中文，1200 = Unicode */
+        BLOCK "080404B0"
+        BEGIN
+            VALUE "CompanyName",      "PowerWeb"
+            VALUE "FileDescription",  "PowerWeb - 局域网电源控制服务"
+            VALUE "FileVersion",      PW_VERSION
+            VALUE "InternalName",     "PowerWeb"
+            VALUE "LegalCopyright",   "Copyright (c) 2026 moyisuosheng. MIT License."
+            VALUE "OriginalFilename", "PowerWeb.exe"
+            VALUE "ProductName",      "PowerWeb"
+            VALUE "ProductVersion",   PW_VERSION
+            VALUE "Comments",         "手机浏览器控制电脑关机 / 重启 / 睡眠 / 锁屏"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
+
+/*
+ * 这里不写应用程序清单：mingw-w64 链接时会自动加入 default-manifest.o
+ * （已包含 asInvoker 和 longPathAware），再塞一个 ID 为 1 的清单会让 ld 报
+ * "multiple non-default manifests"。要自定义清单，需改用 MSVC 的 /MANIFESTINPUT。
+ */
