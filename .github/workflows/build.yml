@@ -26,7 +26,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 安装 mingw-w64 工具链
         run: |
@@ -65,7 +65,7 @@ jobs:
           x86_64-w64-mingw32-objdump -p build/dist/PowerWeb.exe | grep "DLL Name"
 
       - name: 上传可运行目录
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PowerWeb-win64
           path: build/dist/
@@ -78,10 +78,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 下载构建产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: PowerWeb-win64
           path: dist
@@ -98,7 +98,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: 下载构建产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: PowerWeb-win64
           path: dist
@@ -114,7 +114,7 @@ jobs:
           ls -l
 
       - name: 创建 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: PowerWeb ${{ needs.build.outputs.version }}
           body: |
