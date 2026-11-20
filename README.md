@@ -54,9 +54,22 @@ PowerWeb.exe [选项]
   --key K        访问密钥；设置后 /api 请求必须带 X-Auth-Key
   --dry-run      演练模式，只打印要执行的命令，不真的关机
   --html PATH    页面文件，默认取 exe 同目录的 index.html
+  --hidden       启动后隐藏控制台窗口（开机自启用）
   --version      显示版本号
   -h, --help     显示帮助
 ```
+
+## 开机自启
+
+双击 `enable-autostart.bat`，会在「启动」文件夹里建一个 `PowerWeb.lnk`，指向同目录的 `PowerWeb.exe`：
+
+```
+目标：...\PowerWeb.exe
+参数：--hidden --port 8000
+```
+
+`--hidden` 让 exe 启动后自己把控制台窗口藏起来，所以开机时不会闪黑框。想换端口就带参数跑：
+`enable-autostart.bat 8123`（记得和 `start-exe.bat` 里的一致）。取消自启双击 `disable-autostart.bat`。
 
 ## HTTP 接口
 

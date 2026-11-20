@@ -42,15 +42,19 @@ DIST_FILES := web/index.html \
               packaging/disable-autostart.bat \
               packaging/install-autostart.ps1
 
-.PHONY: all dist zip clean run help
+.PHONY: all dist zip clean run help FORCE
 
 all: $(TARGET) dist
 
-# 版本号来自这里，C 源码和资源脚本都包含它
-$(BUILD)/version.h: Makefile
+# 版本号来自这里，C 源码和资源脚本都包含它。
+# 依赖 FORCE：VERSION 变了就比对内容重写；内容一样则不碰文件，避免无谓重编。
+$(BUILD)/version.h: FORCE
 	@mkdir -p $(BUILD)
 	@printf '#ifndef PW_VERSION\n#define PW_VERSION "%s"\n#endif\n#ifndef PW_VER_NUM\n#define PW_VER_NUM %s\n#endif\n' \
-		"$(VERSION)" "$(VER_NUM)" > $@
+		"$(VERSION)" "$(VER_NUM)" > $@.tmp
+	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; echo "==> version: $(VERSION)"; fi
+
+FORCE:
 
 $(OBJ)/powerweb.o: $(SRC) $(BUILD)/version.h
 	@mkdir -p $(OBJ)

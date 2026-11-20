@@ -60,6 +60,7 @@ static AppState         g_state;
 static CRITICAL_SECTION g_lock;
 static char             g_key[128];
 static int              g_dryRun = 0;
+static int              g_hidden = 0;   /* --hidden：启动后立即隐藏控制台窗口 */
 static int              g_port   = 8000;
 static char             g_exeDir[MAX_PATH];
 static char             g_htmlPath[MAX_PATH + 32];   /* 目录 + index.html */
@@ -790,6 +791,7 @@ static void print_usage(void) {
     printf("   --key K        访问密钥；设置后 /api 请求必须带 X-Auth-Key\n");
     printf("   --dry-run      演练模式，只打印要执行的命令，不真的关机\n");
     printf("   --html PATH    页面文件，默认取 exe 同目录的 index.html\n");
+    printf("   --hidden       启动后隐藏控制台窗口（开机自启用）\n");
     printf("   --version      显示版本号\n");
     printf("   -h, --help     显示本帮助\n");
     printf("\n");
@@ -820,6 +822,8 @@ int main(int argc, char **argv) {
             strncpy(g_key, argv[++i], sizeof g_key - 1);
         } else if (strcmp(argv[i], "--dry-run") == 0 || strcmp(argv[i], "--dryrun") == 0) {
             g_dryRun = 1;
+        } else if (strcmp(argv[i], "--hidden") == 0) {
+            g_hidden = 1;
         } else if (strcmp(argv[i], "--version") == 0) {
             printf("PowerWeb %s\n", PW_VERSION);
             return 0;
@@ -830,6 +834,12 @@ int main(int argc, char **argv) {
             printf("未知参数：%s\n", argv[i]);
             return 1;
         }
+    }
+
+    /* ---- 隐藏控制台：给开机自启用的，之后日志就看不见了 ---- */
+    if (g_hidden) {
+        HWND con = GetConsoleWindow();
+        if (con) ShowWindow(con, SW_HIDE);
     }
 
     /* ---- 路径基准：exe 所在目录 ---- */
