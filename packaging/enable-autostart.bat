@@ -1,11 +1,12 @@
 @echo off
 setlocal
+chcp 65001 >nul
 cd /d "%~dp0"
 
-rem Optional: port number. Default 8000, keep it the same as start-exe.bat
-set "PORT=8000"
-if not "%~1"=="" set "PORT=%~1"
+rem Create a Startup shortcut so PowerWeb starts silently at every logon.
+rem Port and access key are inherited from start-exe.bat; override with args:
+rem   enable-autostart.bat -Port 8123 -Key 1234
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-autostart.ps1" -Port %PORT%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-autostart.ps1" %*
 echo.
 pause

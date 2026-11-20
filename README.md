@@ -61,15 +61,22 @@ PowerWeb.exe [选项]
 
 ## 开机自启
 
-双击 `enable-autostart.bat`，会在「启动」文件夹里建一个 `PowerWeb.lnk`，指向同目录的 `PowerWeb.exe`：
+双击 `enable-autostart.bat`，会在「启动」文件夹里建一个 `PowerWeb.lnk`，直接指向同目录的 `PowerWeb.exe`：
 
 ```
 目标：...\PowerWeb.exe
-参数：--hidden --port 8000
+参数：--hidden --port 8000 --key 1234
 ```
 
-`--hidden` 让 exe 启动后自己把控制台窗口藏起来，所以开机时不会闪黑框。想换端口就带参数跑：
-`enable-autostart.bat 8123`（记得和 `start-exe.bat` 里的一致）。取消自启双击 `disable-autostart.bat`。
+端口和密钥**从 `start-exe.bat` 里自动读**（`PORT` 和 `ACCESS_KEY` 两行），所以自启和手动启动的配置不会不一致。
+要临时覆盖就带参数：
+
+```
+enable-autostart.bat -Port 8123 -Key 1234
+```
+
+`--hidden` 让 exe 启动后自己把控制台窗口藏起来，开机时不会闪黑框，任务栏也不会多一个窗口。
+取消自启双击 `disable-autostart.bat`。
 
 ## HTTP 接口
 
