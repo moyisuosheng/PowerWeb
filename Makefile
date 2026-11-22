@@ -22,7 +22,14 @@ PYTHON   ?= python3
 
 CFLAGS   ?= -O2 -Wall -Wextra -std=c99
 LDFLAGS  ?= -static -s
-LIBS     := -lws2_32
+LIBS     := -lws2_32 -lshell32
+
+# 源码是 UTF-8，托盘菜单里用了宽字符中文字面量。不同 gcc 的默认
+# -fwide-exec-charset 不一致（MinGW 是 UTF-16，Linux 交叉编译则可能报错），
+# 这里显式固定，保证本机与 CI 编出来的菜单文字一样。
+ifneq (,$(findstring gcc,$(CC)))
+CHARSET  := -finput-charset=UTF-8 -fexec-charset=UTF-8 -fwide-exec-charset=UTF-16LE
+endif
 
 BUILD    := build
 OBJ      := $(BUILD)/obj
@@ -58,7 +65,7 @@ FORCE:
 
 $(OBJ)/powerweb.o: $(SRC) $(BUILD)/version.h
 	@mkdir -p $(OBJ)
-	$(CC) $(CFLAGS) -I$(BUILD) -c $< -o $@
+	$(CC) $(CFLAGS) $(CHARSET) -I$(BUILD) -c $< -o $@
 
 $(RESOBJ): $(RC) res/app.ico $(BUILD)/version.h
 	@mkdir -p $(OBJ)

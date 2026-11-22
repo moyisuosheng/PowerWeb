@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <wchar.h>
+#include <shellapi.h>
 
 #ifdef _MSC_VER
 #  pragma comment(lib, "ws2_32.lib")   /* MSVC 用；MinGW 走 -lws2_32 */
@@ -726,6 +728,258 @@ static DWORD WINAPI conn_thread(LPVOID param) {
     return 0;
 }
 
+/* ------------------------------------------------------------------ 托盘图标 */
+
+/*
+ * --hidden 时控制台不可见，托盘图标就是唯一的存在感。
+ * 托盘消息必须由窗口过程接收，而主线程阻塞在 accept 上，
+ * 所以单开一个线程，建一个隐藏窗口专门跑消息循环。
+ */
+
+#define PW_WM_TRAY   (WM_APP + 11)
+#define IDM_PW_OPEN  40001
+#define IDM_PW_COPY  40002
+#define IDM_PW_EXIT  40003
+
+static PVOID            g_trayWin;      /* 隐藏窗口句柄，跨线程访问 */
+static NOTIFYICONDATAW  g_nid;          /* 托盘数据，资源管理器重启后要重加 */
+static HICON            g_trayIcon;     /* 图标句柄，重建时复用 */
+static int              g_trayShown;
+static UINT             g_taskbarMsg;   /* "TaskbarCreated" 广播消息号 */
+static int              g_tray = -1;    /* -1 自动（--hidden 时开），1 开，0 关 */
+
+static HWND tray_window(void) {
+    return (HWND)InterlockedCompareExchangePointer(&g_trayWin, NULL, NULL);
+}
+
+/* 取第一个非回环的 IPv4；没有则返回 0 */
+static int lan_ip(char *out, size_t n) {
+    struct addrinfo hints, *res = NULL, *p;
+    char            host[64] = "";
+    DWORD           hostLen  = sizeof host - 1;
+    int             found    = 0;
+
+    GetComputerNameA(host, &hostLen);
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, NULL, &hints, &res) == 0 && res) {
+        for (p = res; p; p = p->ai_next) {
+            struct sockaddr_in *sa = (struct sockaddr_in *)p->ai_addr;
+            const char         *ip = inet_ntoa(sa->sin_addr);
+            if (strncmp(ip, "127.", 4) == 0) continue;
+            snprintf(out, n, "%s", ip);
+            found = 1;
+            break;
+        }
+        freeaddrinfo(res);
+    }
+    return found;
+}
+
+static void build_url(char *out, size_t n) {
+    char ip[64];
+    if (!lan_ip(ip, sizeof ip)) snprintf(ip, sizeof ip, "127.0.0.1");
+    snprintf(out, n, "http://%s:%d", ip, g_port);
+}
+
+static void tray_open_page(void) {
+    char url[160];
+    build_url(url, sizeof url);
+    if ((uintptr_t)ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL) <= 32)
+        logmsg("打开浏览器失败：%s", url);
+}
+
+static void tray_copy_url(void) {
+    char    url[160];
+    HGLOBAL h;
+    char   *p;
+    size_t  len;
+
+    build_url(url, sizeof url);
+    if (!OpenClipboard(NULL)) return;
+    EmptyClipboard();
+    len = strlen(url) + 1;
+    h   = GlobalAlloc(GMEM_MOVEABLE, len);
+    if (h && (p = (char *)GlobalLock(h)) != NULL) {
+        memcpy(p, url, len);
+        GlobalUnlock(h);
+        if (!SetClipboardData(CF_TEXT, h)) GlobalFree(h);
+    }
+    CloseClipboard();
+    logmsg("已复制访问地址：%s", url);
+}
+
+static HICON tray_load_icon(void) {
+    if (!g_trayIcon) {
+        g_trayIcon = (HICON)LoadImageW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(1),
+                                       IMAGE_ICON,
+                                       GetSystemMetrics(SM_CXSMICON),
+                                       GetSystemMetrics(SM_CYSMICON),
+                                       LR_DEFAULTCOLOR);
+    }
+    /* 资源缺失时退到系统默认图标，托盘照样能用 */
+    return g_trayIcon ? g_trayIcon
+                      : LoadIconW(NULL, (LPCWSTR)(ULONG_PTR)IDI_APPLICATION);
+}
+
+static void tray_remove(void) {
+    if (g_trayShown) {
+        Shell_NotifyIconW(NIM_DELETE, &g_nid);
+        g_trayShown = 0;
+    }
+}
+
+static void tray_add(void) {
+    HWND    hwnd = tray_window();
+    wchar_t tip[128];
+    char    ip[64];
+
+    if (!hwnd) return;
+    if (!lan_ip(ip, sizeof ip)) snprintf(ip, sizeof ip, "127.0.0.1");
+
+    memset(&g_nid, 0, sizeof g_nid);
+    g_nid.cbSize           = sizeof g_nid;
+    g_nid.hWnd             = hwnd;
+    g_nid.uID              = 1;
+    g_nid.uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_STATE;
+    g_nid.dwState          = 0;
+    g_nid.dwStateMask      = NIS_HIDDEN;   /* 明确要求不要折叠进溢出区 */
+    g_nid.uCallbackMessage = PW_WM_TRAY;
+    g_nid.hIcon            = tray_load_icon();
+
+    swprintf(tip, 128, L"PowerWeb %hs\n端口 %d · %hs", PW_VERSION, g_port, ip);
+    wcsncpy(g_nid.szTip, tip, sizeof(g_nid.szTip) / sizeof(g_nid.szTip[0]) - 1);
+
+    if (Shell_NotifyIconW(NIM_ADD, &g_nid)) {
+        g_trayShown = 1;
+        logmsg("托盘图标已就绪（左键打开页面，右键有菜单）");
+    } else {
+        logmsg("托盘图标添加失败（错误码 %lu），服务照常运行",
+               (unsigned long)GetLastError());
+    }
+}
+
+static void tray_menu(void) {
+    HWND    hwnd = tray_window();
+    HMENU   m;
+    POINT   pt;
+    int     cmd;
+    wchar_t addr[192];
+    char    url[160];
+
+    if (!hwnd) return;
+    build_url(url, sizeof url);
+
+    m = CreatePopupMenu();
+    if (!m) return;
+
+    AppendMenuW(m, MF_STRING, IDM_PW_OPEN, L"打开控制页面");
+    AppendMenuW(m, MF_STRING, IDM_PW_COPY, L"复制访问地址");
+    AppendMenuW(m, MF_SEPARATOR, 0, NULL);
+    swprintf(addr, 192, L"  %hs", url);
+    AppendMenuW(m, MF_STRING | MF_GRAYED, 0, addr);
+    AppendMenuW(m, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(m, MF_STRING, IDM_PW_EXIT, L"退出 PowerWeb");
+    SetMenuDefaultItem(m, IDM_PW_OPEN, FALSE);
+
+    GetCursorPos(&pt);
+    SetForegroundWindow(hwnd);          /* 否则点菜单外面菜单不消失 */
+    cmd = TrackPopupMenu(m, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                         pt.x, pt.y, 0, hwnd, NULL);
+    PostMessageW(hwnd, WM_NULL, 0, 0);
+    DestroyMenu(m);
+
+    switch (cmd) {
+    case IDM_PW_OPEN: tray_open_page(); break;
+    case IDM_PW_COPY: tray_copy_url(); break;
+    case IDM_PW_EXIT:
+        logmsg("从托盘退出，正在停止服务");
+        tray_remove();
+        ExitProcess(0);
+        break;
+    }
+}
+
+static LRESULT CALLBACK tray_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    /* 资源管理器重启后，托盘图标会被清空，需要重新挂上去 */
+    if (g_taskbarMsg && msg == g_taskbarMsg) {
+        g_trayShown = 0;
+        tray_add();
+        return 0;
+    }
+
+    switch (msg) {
+    case PW_WM_TRAY:
+        switch (LOWORD(lp)) {
+        case WM_LBUTTONUP:   tray_open_page(); break;
+        case WM_RBUTTONUP:
+        case WM_CONTEXTMENU: tray_menu();      break;
+        }
+        return 0;
+    case WM_ENDSESSION:                    /* 关机 / 注销前先摘掉图标 */
+        tray_remove();
+        return 0;
+    }
+
+    (void)wp;
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+static DWORD WINAPI tray_thread(LPVOID param) {
+    WNDCLASSEXW wc;
+    HWND        hwnd;
+    MSG         msg;
+
+    (void)param;
+    g_taskbarMsg = RegisterWindowMessageW(L"TaskbarCreated");
+
+    memset(&wc, 0, sizeof wc);
+    wc.cbSize        = sizeof wc;
+    wc.lpfnWndProc   = tray_proc;
+    wc.hInstance     = GetModuleHandleW(NULL);
+    wc.lpszClassName = L"PowerWebTrayWnd";
+    if (!RegisterClassExW(&wc)) {
+        logmsg("托盘窗口类注册失败（错误码 %lu）", (unsigned long)GetLastError());
+        return 1;
+    }
+
+    /* 普通隐藏窗口：message-only 窗口不能当菜单的 owner */
+    hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, L"PowerWebTrayWnd", L"PowerWeb",
+                           WS_POPUP, 0, 0, 0, 0, NULL, NULL, wc.hInstance, NULL);
+    if (!hwnd) {
+        logmsg("托盘窗口创建失败（错误码 %lu）", (unsigned long)GetLastError());
+        return 1;
+    }
+
+    InterlockedExchangePointer(&g_trayWin, hwnd);
+    tray_add();
+
+    while (GetMessageW(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+
+    tray_remove();
+    InterlockedExchangePointer(&g_trayWin, NULL);
+    DestroyWindow(hwnd);
+    return 0;
+}
+
+static void tray_start(void) {
+    if (g_tray <= 0) return;
+    if (CreateThread(NULL, 0, tray_thread, NULL, 0, NULL) == NULL) {
+        logmsg("托盘图标创建失败，服务继续运行");
+    }
+}
+
+/* Ctrl+C / 关窗口时摘掉图标，避免托盘里留一个点不动的幽灵 */
+static BOOL WINAPI on_console_ctrl(DWORD type) {
+    (void)type;
+    tray_remove();
+    return FALSE;   /* 交给默认处理，进程照常退出 */
+}
+
 /* ------------------------------------------------------------------ 启动横幅 */
 
 static void print_banner(void) {
@@ -762,6 +1016,8 @@ static void print_banner(void) {
 
     printf("   访问密钥 : %s\n", (g_key[0] != '\0') ? "已开启" : "未设置（同一局域网内任何人都能操作）");
     printf("   运行模式 : %s\n", g_dryRun ? "演练模式（不会真的关机）" : "正常执行");
+    printf("   托盘图标 : %s\n", g_tray > 0 ? "已启用（任务栏右下角，左键开页面 / 右键菜单）"
+                                            : "未启用（加 --tray 可开启）");
     printf("   页面文件 : %s\n", g_htmlPath);
     printf(" --------------------------------------------------------------\n");
     printf("   手机和电脑必须连同一个局域网；首次启动若弹出防火墙提示，\n");
@@ -791,7 +1047,8 @@ static void print_usage(void) {
     printf("   --key K        访问密钥；设置后 /api 请求必须带 X-Auth-Key\n");
     printf("   --dry-run      演练模式，只打印要执行的命令，不真的关机\n");
     printf("   --html PATH    页面文件，默认取 exe 同目录的 index.html\n");
-    printf("   --hidden       启动后隐藏控制台窗口（开机自启用）\n");
+    printf("   --hidden       启动后隐藏控制台窗口（开机自启用，自动带托盘图标）\n");
+    printf("   --tray         显示托盘图标；--no-tray 强制不显示\n");
     printf("   --version      显示版本号\n");
     printf("   -h, --help     显示本帮助\n");
     printf("\n");
@@ -824,6 +1081,10 @@ int main(int argc, char **argv) {
             g_dryRun = 1;
         } else if (strcmp(argv[i], "--hidden") == 0) {
             g_hidden = 1;
+        } else if (strcmp(argv[i], "--tray") == 0) {
+            g_tray = 1;
+        } else if (strcmp(argv[i], "--no-tray") == 0 || strcmp(argv[i], "--notray") == 0) {
+            g_tray = 0;
         } else if (strcmp(argv[i], "--version") == 0) {
             printf("PowerWeb %s\n", PW_VERSION);
             return 0;
@@ -841,6 +1102,9 @@ int main(int argc, char **argv) {
         HWND con = GetConsoleWindow();
         if (con) ShowWindow(con, SW_HIDE);
     }
+
+    /* 没显式指定时：静默运行才挂托盘（有控制台窗口时不必多此一举） */
+    if (g_tray < 0) g_tray = g_hidden ? 1 : 0;
 
     /* ---- 路径基准：exe 所在目录 ---- */
     if (!GetModuleFileNameA(NULL, modPath, MAX_PATH)) die("GetModuleFileName 失败");
@@ -880,6 +1144,9 @@ int main(int argc, char **argv) {
 
     print_banner();
     logmsg("服务已就绪，监听 0.0.0.0:%d", g_port);
+
+    SetConsoleCtrlHandler(on_console_ctrl, TRUE);
+    tray_start();
 
     while (1) {
         SOCKET client = accept(listener, NULL, NULL);
